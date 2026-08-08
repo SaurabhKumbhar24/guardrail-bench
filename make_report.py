@@ -78,6 +78,46 @@ FAMILY = {
     "regex-baseline": "Control",
 }
 
+# Adapters are named after the code path they exercise, which is right for the
+# harness and needlessly internal in a published table.
+DISPLAY = {
+    "fluiq.secure": "fluiq",
+    "fluiq.secure (worker check)": "fluiq",
+    "fluiq.secure (lite)": "fluiq (inline scanner)",
+    "fluiq.secure (input)": "fluiq (API fast path)",
+    "fluiq.secure (worker input)": "fluiq (worker input)",
+    "llm-guard (injection)": "llm-guard",
+    "nightfall (injection)": "nightfall",
+}
+
+# Every contestant is one product in the comparison tables, and we measured more
+# than one configuration of our own gate. Two Fluiq rows beside one row per
+# competitor is not a like-for-like comparison: nobody runs Lakera twice with its
+# model switched off. So the configuration that ships as fluiq.secure() carries
+# the comparison and the rest move to a table of their own.
+#
+# Worth stating plainly, because the move flatters us: the configurations set
+# aside score lower on every corpus. That is why they go to an appendix with
+# their numbers intact rather than out of the report.
+SECONDARY = {
+    "fluiq.secure (lite)",
+    "fluiq.secure (input)",
+    "fluiq.secure (worker input)",
+}
+
+# Which vendor a row belongs to, for logos on the charts. Several adapters share
+# a vendor: llm-guard's injection scanner is still LLM Guard.
+SLUG = {
+    "fluiq.secure": "fluiq", "fluiq.secure (worker check)": "fluiq",
+    "fluiq.secure (lite)": "fluiq", "fluiq.secure (input)": "fluiq",
+    "fluiq.secure (worker input)": "fluiq",
+    "llm-guard": "llm-guard", "llm-guard (injection)": "llm-guard",
+    "presidio": "presidio", "nemo-guardrails": "nemo-guardrails",
+    "aws-comprehend": "aws-comprehend", "lakera-guard": "lakera-guard",
+    "nightfall": "nightfall", "nightfall (injection)": "nightfall",
+    "regex-baseline": "regex-baseline",
+}
+
 
 def load_results(name):
     p = ROOT / name
@@ -93,11 +133,21 @@ def corpus_counts(name):
     return len(rows), b
 
 
-def rows_for(res):
+def rows_for(res, secondary=False):
+    """Scored rows, best F1 first.
+
+    `secondary` selects the extra Fluiq configurations instead of the comparison
+    set, so the two callers cannot accidentally overlap or drop a row between
+    them.
+    """
     out = []
     for name, r in sorted(res["guardrails"].items(), key=lambda kv: -kv[1]["f1"]):
+        if (name in SECONDARY) != secondary:
+            continue
         out.append({
-            "name": name,
+            "name": DISPLAY.get(name, name),
+            "adapter": name,
+            "slug": SLUG.get(name, "regex-baseline"),
             "family": FAMILY.get(name, "—"),
             "recall": r["recall"] * 100,
             "fa": r["false_alarm_rate"] * 100,
@@ -119,9 +169,9 @@ def markdown() -> str:
     w("Most LLM safety benchmarks ask whether the model misbehaves. This one asks a "
       "different question: **given something a model is about to say, or something a "
       "user just sent, would your guardrail stop it?**\n")
-    w("Nine guardrails across four independent products, a control, and two Fluiq "
-      "configurations, measured on four corpora — two of them public datasets that "
-      "neither we nor any vendor curated.\n")
+    w("Eight guardrails, measured on four corpora. Six are independent products, one is a "
+      "thirty-line regex control, and one is ours. Two of the corpora are public datasets "
+      "that neither we nor any vendor curated.\n")
 
     for c in CORPORA:
         res = load_results(c["results"])
@@ -136,6 +186,24 @@ def markdown() -> str:
         w("|---|---|---:|---:|---:|")
         for r in rows_for(res):
             w(f"| `{r['name']}` | {r['family']} | {r['recall']:.1f}% | {r['fa']:.1f}% | **{r['f1']:.1f}%** |")
+
+    w("\n## Other Fluiq configurations\n")
+    w("The tables above give every contestant one row, ours included. We measured more than "
+      "one configuration of our own gate, and the one that ships as `fluiq.secure()` is the "
+      "one that competes. The rest are below, with their numbers, because every one of them "
+      "scores lower and leaving them out would be the convenient thing to do.\n")
+    w("| Configuration | Corpus | Recall | False alarm | F1 |")
+    w("|---|---|---:|---:|---:|")
+    for c in CORPORA:
+        res = load_results(c["results"])
+        if not res:
+            continue
+        for r in rows_for(res, secondary=True):
+            w(f"| `{r['name']}` | {c['title']} | {r['recall']:.1f}% | {r['fa']:.1f}% | {r['f1']:.1f}% |")
+    w("\n`fluiq (API fast path)` is the synchronous pattern-only check served by the API, which "
+      "has no semantic layer. `fluiq (inline scanner)` is the trimmed scanner behind the public "
+      "demo page. Both are real code paths, neither is the product.\n")
+
     w("\n## Method\n")
     w("Every guardrail receives the same string and answers one question: block or allow. "
       "Scoring was fixed before any contestant ran.\n")
@@ -155,7 +223,8 @@ def markdown() -> str:
 
 CSS = """
 @page { size: A4; margin: 18mm 16mm 20mm; }
-:root { --ink:#14151a; --mute:#6b7078; --rule:#e3e5ea; --accent:#1860D3; --bad:#c02626; --ok:#127a4a; }
+:root { --ink:#14151a; --mute:#6b7078; --rule:#e3e5ea; --accent:#1860D3; --bad:#c02626; --ok:#127a4a;
+        --grey:#8B939E; --rail:#eceef1; }
 * { box-sizing:border-box; }
 body { font-family:'Segoe UI',-apple-system,system-ui,sans-serif; color:var(--ink);
        margin:0; padding:0; font-size:10.5pt; line-height:1.55; }
@@ -187,8 +256,93 @@ code { font-family:'Cascadia Mono',Consolas,monospace; font-size:9pt;
 .foot { margin-top:34px; padding-top:12px; border-top:1px solid var(--rule);
         font-size:8.5pt; color:var(--mute); }
 ul { margin:8px 0; padding-left:19px; } li { margin:5px 0; }
+
+/* Charts. Two panels, one per measure, sharing a row order — never one plot with
+   two scales. Recall and false alarm both run 0-100% but they point in opposite
+   directions, and a reader who sees them on one axis will read the taller bar as
+   the better product. Bars carry magnitude; Fluiq is the accent and every
+   competitor is the same neutral grey, so nobody has to decode a nine-hue
+   legend to find the comparison. Both colours were checked for contrast against
+   the page and for separation under protanopia and tritanopia; the product name
+   is written on every row regardless, so colour never carries identity alone. */
+.charts { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin:14px 0 4px;
+          page-break-inside:avoid; }
+.panel h4 { font-size:8pt; text-transform:uppercase; letter-spacing:.07em; color:var(--mute);
+            margin:0 0 10px; font-weight:600; }
+.panel h4 em { font-style:normal; text-transform:none; letter-spacing:0; opacity:.75; }
+.brow { display:grid; grid-template-columns:1fr 42px; align-items:end; gap:9px; margin-bottom:9px; }
+.blab { font-size:8pt; color:var(--mute); margin-bottom:4px; display:flex; align-items:center; gap:5px; }
+.brow.us .blab { color:var(--ink); font-weight:600; }
+.blab img { height:11px; width:auto; max-width:14px; object-fit:contain; }
+.mono { display:inline-flex; align-items:center; justify-content:center; min-width:14px; height:11px;
+        padding:0 3px; border-radius:3px; background:#e7e9ed; color:#5c626b;
+        font-size:6pt; font-weight:700; letter-spacing:.02em;
+        -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.brow.us .mono { background:var(--accent); color:#fff; }
+.track { height:9px; background:var(--rail); border-radius:4px;
+         -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.track i { display:block; height:100%; background:var(--grey); border-radius:4px;
+           -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.brow.us .track i { background:var(--accent); }
+.bval { font-size:8.5pt; text-align:right; font-variant-numeric:tabular-nums; color:var(--mute);
+        line-height:1; padding-bottom:1px; }
+.brow.us .bval { color:var(--ink); font-weight:700; }
+.axis { display:flex; justify-content:space-between; font-size:7pt; color:var(--mute);
+        border-top:1px solid var(--rule); padding-top:3px; margin-top:2px; }
+.key { font-size:8pt; color:var(--mute); margin:2px 0 0; display:flex; gap:14px; align-items:center; }
+.key span { display:flex; align-items:center; gap:5px; }
+.key b { width:9px; height:9px; border-radius:3px; display:inline-block;
+         -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
 @media print { .page { padding:0; max-width:none; } a { color:var(--ink); text-decoration:none; } }
 """
+
+
+# Shown when no vendor logo file is present. Vendor logos are not vendored into
+# this repository; drop an SVG at logos/<slug>.svg and it is picked up here and
+# on the website, which reads the same slug.
+MONO = {
+    "fluiq": "F", "llm-guard": "LG", "presidio": "Pr", "nemo-guardrails": "NV",
+    "aws-comprehend": "AWS", "lakera-guard": "Lk", "nightfall": "NF",
+    "regex-baseline": "re",
+}
+
+
+def mark(slug: str) -> str:
+    p = ROOT / "logos" / f"{slug}.svg"
+    if p.exists():
+        return f"<img src='logos/{slug}.svg' alt=''>"
+    return f"<span class='mono'>{MONO.get(slug, '?')}</span>"
+
+
+def panel(title: str, hint: str, rows, key: str) -> str:
+    o = [f"<div class='panel'><h4>{title} <em>({hint})</em></h4>"]
+    for r in rows:
+        us = " us" if r["family"] == "Fluiq" else ""
+        v = r[key]
+        # A floor keeps a 0.7% bar visible, but zero has to render as nothing.
+        # A stub on the regex control's 0.0% recall would read as a small score.
+        w = f"width:{v:.1f}%" + (";min-width:2px" if v > 0 else "")
+        o.append(
+            f"<div class='brow{us}'><div>"
+            f"<div class='blab'>{mark(r['slug'])}{r['name']}</div>"
+            f"<div class='track'><i style='{w}'></i></div>"
+            f"</div><div class='bval'>{v:.1f}%</div></div>"
+        )
+    o.append("<div class='axis'><span>0%</span><span>100%</span></div></div>")
+    return "".join(o)
+
+
+def charts(rows) -> str:
+    return (
+        "<div class='charts'>"
+        + panel("Recall", "higher is better", rows, "recall")
+        + panel("False alarm", "lower is better", rows, "fa")
+        + "</div>"
+        "<p class='key'><span><b style='background:#1860D3'></b>Fluiq</span>"
+        "<span><b style='background:#8B939E'></b>Everything else</span>"
+        "<span>Rows ordered by F1, best first, and identical in both panels.</span></p>"
+    )
 
 
 def html() -> str:
@@ -197,7 +351,7 @@ def html() -> str:
     w(f"<!doctype html><html><head><meta charset='utf-8'>"
       f"<title>Fluiq — Output Guardrail Benchmark</title><style>{CSS}</style></head><body><div class='page'>")
     w("<h1>Output Guardrails:<br>A Measured Comparison</h1>")
-    w(f"<p class='sub'>Fluiq &middot; {RUN_DATE} &middot; nine guardrails, four corpora, 949 cases</p>")
+    w(f"<p class='sub'>Fluiq &middot; {RUN_DATE} &middot; eight guardrails, four corpora, 949 cases</p>")
 
     w("<p class='lede'>Most LLM safety benchmarks ask whether the <em>model</em> misbehaves. "
       "This one asks a different question: given something a model is about to say, or "
@@ -221,14 +375,38 @@ def html() -> str:
         src = (f"<a href='{c['source_url']}'>{c['source']}</a>" if c["source_url"] else c["source"])
         w(f"<p class='meta'><b>Corpus</b> {n} cases &middot; {nb} block / {n-nb} allow &nbsp;|&nbsp; "
           f"<b>Source</b> {src} &nbsp;|&nbsp; <b>Licence</b> {c['licence']}</p>")
+        rows = rows_for(res)
+        w(charts(rows))
         w("<table><thead><tr><th>Guardrail</th><th>Category</th>"
           "<th class='n'>Recall</th><th class='n'>False alarm</th><th class='n'>F1</th></tr></thead><tbody>")
-        for i, r in enumerate(rows_for(res)):
+        for i, r in enumerate(rows):
             cls = " class='win'" if i == 0 else ""
             w(f"<tr><td><code>{r['name']}</code></td><td><span class='tag'>{r['family']}</span></td>"
               f"<td class='n'>{r['recall']:.1f}%</td><td class='n'>{r['fa']:.1f}%</td>"
               f"<td class='n'{cls}>{r['f1']:.1f}%</td></tr>")
         w("</tbody></table>")
+
+    w("<h2>Other Fluiq configurations</h2>")
+    w("<p>The tables above give every contestant one row, ours included. We measured more than "
+      "one configuration of our own gate, and the one that ships as <code>fluiq.secure()</code> "
+      "is the one that competes, because nobody runs Lakera twice with its model switched off. "
+      "The rest are here with their numbers, since every one of them scores lower and leaving "
+      "them out would have been the convenient thing to do.</p>")
+    w("<table><thead><tr><th>Configuration</th><th>Corpus</th>"
+      "<th class='n'>Recall</th><th class='n'>False alarm</th><th class='n'>F1</th></tr></thead><tbody>")
+    for c in CORPORA:
+        res = load_results(c["results"])
+        if not res:
+            continue
+        for r in rows_for(res, secondary=True):
+            w(f"<tr><td><code>{r['name']}</code></td><td>{c['title']}</td>"
+              f"<td class='n'>{r['recall']:.1f}%</td><td class='n'>{r['fa']:.1f}%</td>"
+              f"<td class='n'>{r['f1']:.1f}%</td></tr>")
+    w("</tbody></table>")
+    w("<p class='meta'><code>fluiq (API fast path)</code> is the synchronous pattern-only check "
+      "the API serves inline, which has no semantic layer. <code>fluiq (inline scanner)</code> is "
+      "the trimmed scanner behind the public demo page. Both are real code paths that real "
+      "traffic hits. Neither is the product.</p>")
 
     w("<h2>Method</h2>")
     w("<p>Every guardrail receives the same string and answers one question: block or allow. "
@@ -296,7 +474,44 @@ def html() -> str:
     return "\n".join(p)
 
 
+# ── Website data ──────────────────────────────────────────────────────────────
+
+# The /benchmark page renders from this file rather than from prose, so the
+# published page cannot drift from the measurements the report was built on.
+FRONTEND = ROOT.parent / "source" / "fluiq-frontend" / "src" / "lib" / "benchmarkData.json"
+
+
+def frontend_payload() -> dict:
+    corpora = []
+    for c in CORPORA:
+        res = load_results(c["results"])
+        if not res:
+            continue
+        n, nb = corpus_counts(c["corpus"])
+
+        def pack(r):
+            return {
+                "name": r["name"], "slug": r["slug"], "family": r["family"],
+                "recall": round(r["recall"], 1), "false_alarm": round(r["fa"], 1),
+                "f1": round(r["f1"], 1),
+            }
+
+        corpora.append({
+            "key": c["key"], "title": c["title"], "source": c["source"],
+            "source_url": c["source_url"], "licence": c["licence"],
+            "blurb": c["blurb"], "cases": n, "block": nb, "allow": n - nb,
+            "results": [pack(r) for r in rows_for(res)],
+            "secondary": [pack(r) for r in rows_for(res, secondary=True)],
+        })
+    return {"generated": RUN_DATE, "corpora": corpora}
+
+
 if __name__ == "__main__":
     (ROOT / "REPORT.md").write_text(markdown(), encoding="utf-8")
     (ROOT / "report.html").write_text(html(), encoding="utf-8")
     print("wrote REPORT.md and report.html")
+    if FRONTEND.parent.exists():
+        FRONTEND.write_text(json.dumps(frontend_payload(), indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {FRONTEND}")
+    else:
+        print(f"skipped website data, {FRONTEND.parent} not found")

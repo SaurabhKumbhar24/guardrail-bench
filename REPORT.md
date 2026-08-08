@@ -6,10 +6,10 @@
 
 Most LLM safety benchmarks ask whether the model misbehaves. This one asks a different question: **given something a model is about to say, or something a user just sent, would your guardrail stop it?**
 
-Nine guardrails across four independent products, a control, and two Fluiq configurations, measured on four corpora — two of them public datasets that neither we nor any vendor curated.
+Eight guardrails, measured on four corpora. Six are independent products, one is a thirty-line regex control, and one is ours. Two of the corpora are public datasets that neither we nor any vendor curated.
 
 
-## Output leakage — adversarial suite
+## Output leakage: adversarial suite
 
 Hand-built cases covering leak shapes a PII corpus does not contain: obfuscated identifiers, credential formats, injected instructions echoed into output, and model refusals that leak while refusing.
 
@@ -18,16 +18,15 @@ Hand-built cases covering leak shapes a PII corpus does not contain: obfuscated 
 | Guardrail | Category | Recall | False alarm | F1 |
 |---|---|---:|---:|---:|
 | `llm-guard` | Open source | 87.5% | 17.6% | **88.9%** |
-| `fluiq.secure` | Fluiq | 81.2% | 11.8% | **86.7%** |
+| `fluiq` | Fluiq | 81.2% | 11.8% | **86.7%** |
 | `aws-comprehend` | Commercial | 84.4% | 23.5% | **85.7%** |
 | `nightfall` | Commercial | 71.9% | 5.9% | **82.1%** |
-| `fluiq.secure (lite)` | Fluiq | 68.8% | 5.9% | **80.0%** |
 | `regex-baseline` | Control | 62.5% | 11.8% | **74.1%** |
 | `lakera-guard` | Commercial | 46.9% | 5.9% | **62.5%** |
 | `presidio` | Open source | 43.8% | 5.9% | **59.6%** |
 | `nemo-guardrails` | Open source | 43.8% | 17.6% | **57.1%** |
 
-## Output leakage — public PII corpus
+## Output leakage: public PII corpus
 
 Sampled from the most widely used public PII dataset. Positives are rows containing at least one strong identifier; negatives are the same rows with PII replaced by placeholders, so both halves share a distribution.
 
@@ -36,14 +35,13 @@ Sampled from the most widely used public PII dataset. Positives are rows contain
 | Guardrail | Category | Recall | False alarm | F1 |
 |---|---|---:|---:|---:|
 | `aws-comprehend` | Commercial | 92.5% | 0.0% | **96.1%** |
-| `fluiq.secure` | Fluiq | 81.0% | 0.0% | **89.5%** |
+| `fluiq` | Fluiq | 81.0% | 0.0% | **89.5%** |
 | `llm-guard` | Open source | 80.0% | 3.0% | **88.1%** |
 | `presidio` | Open source | 69.0% | 0.0% | **81.7%** |
 | `nightfall` | Commercial | 68.0% | 0.0% | **81.0%** |
 | `nemo-guardrails` | Open source | 67.5% | 0.0% | **80.6%** |
 | `lakera-guard` | Commercial | 63.0% | 5.0% | **76.1%** |
 | `regex-baseline` | Control | 42.0% | 0.0% | **59.2%** |
-| `fluiq.secure (lite)` | Fluiq | 39.0% | 0.0% | **56.1%** |
 
 ## Prompt injection
 
@@ -54,8 +52,8 @@ The standard public prompt-injection set, balanced 150/150. Roughly a third of t
 | Guardrail | Category | Recall | False alarm | F1 |
 |---|---|---:|---:|---:|
 | `lakera-guard` | Commercial | 94.7% | 16.7% | **89.6%** |
-| `llm-guard (injection)` | Open source | 38.0% | 1.3% | **54.5%** |
-| `fluiq.secure (input)` | Fluiq | 13.3% | 0.0% | **23.5%** |
+| `llm-guard` | Open source | 38.0% | 1.3% | **54.5%** |
+| `fluiq` | Fluiq | 35.3% | 0.7% | **52.0%** |
 | `regex-baseline` | Control | 0.0% | 0.0% | **0.0%** |
 
 ## Jailbreak
@@ -66,9 +64,24 @@ Balanced 150/150. The benign half contains a large amount of persona and rolepla
 
 | Guardrail | Category | Recall | False alarm | F1 |
 |---|---|---:|---:|---:|
-| `llm-guard (injection)` | Open source | 68.7% | 0.7% | **81.1%** |
+| `llm-guard` | Open source | 68.7% | 0.7% | **81.1%** |
 | `lakera-guard` | Commercial | 97.3% | 83.3% | **69.4%** |
-| `fluiq.secure (input)` | Fluiq | 42.0% | 5.3% | **57.0%** |
+| `fluiq` | Fluiq | 53.3% | 6.0% | **67.0%** |
+| `regex-baseline` | Control | 0.7% | 0.0% | **1.3%** |
+
+## Other Fluiq configurations
+
+The tables above give every contestant one row, ours included. We measured more than one configuration of our own gate, and the one that ships as `fluiq.secure()` is the one that competes. The rest are below, with their numbers, because every one of them scores lower and leaving them out would be the convenient thing to do.
+
+| Configuration | Corpus | Recall | False alarm | F1 |
+|---|---|---:|---:|---:|
+| `fluiq (inline scanner)` | Output leakage: adversarial suite | 68.8% | 5.9% | 80.0% |
+| `fluiq (inline scanner)` | Output leakage: public PII corpus | 39.0% | 0.0% | 56.1% |
+| `fluiq (API fast path)` | Prompt injection | 13.3% | 0.0% | 23.5% |
+| `fluiq (API fast path)` | Jailbreak | 42.0% | 5.3% | 57.0% |
+
+`fluiq (API fast path)` is the synchronous pattern-only check served by the API, which has no semantic layer. `fluiq (inline scanner)` is the trimmed scanner behind the public demo page. Both are real code paths, neither is the product.
+
 
 ## Method
 
