@@ -1,0 +1,23 @@
+.venv/
+.venv312/
+__pycache__/
+*.pyc
+# Never commit credentials. Adapters read keys from the environment only.
+.env
+*.key
+# Intermediate per-environment result files. The merged, canonical ones are
+# committed: the claim that every miss is listed by case ID only holds if the
+# results are actually published.
+results_main.json
+results_312.json
+results_a4p_main.json
+results_a4p_312.json
+results_inj_main.json
+results_inj_en.json
+results_jb_main.json
+results_injection_312.json
+results_injection_en_312.json
+results_jailbreak_312.json
+# Generated from the results; rebuild with make_report.py
+report.html
+benchmark_public.json
