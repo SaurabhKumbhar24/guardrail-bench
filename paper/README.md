@@ -24,11 +24,17 @@ regenerating it silently would defeat the purpose.
 
 Three things need a human, in rough order of how much they matter.
 
-**Verify every citation resolves.** The bibliography was written from memory and
-not checked against the actual papers. Every entry should exist and be correctly
-attributed, but "should" is not good enough for a reference list. Look up all
-nine, confirm the year, venue, and author list, and fix anything that drifted.
-A wrong citation is the fastest way to lose a reader who knows the field.
+**Citations: verified 31 August 2026.** All nine were checked against primary
+sources: Crossref and the Semantic Scholar API for the journal articles, the ACL
+Anthology for the two NLP venues, arXiv and USENIX for the rest. Every entry
+exists and is correctly attributed. Two corrections were applied in the process:
+Bowman's coauthor is George Dahl rather than George E. Dahl, and page ranges were
+added to the four conference papers that lacked them. Greshake is confirmed first
+author on the published AISec version, not only the arXiv preprint, which some
+secondary sources get wrong.
+
+Worth re-checking only if this sits unsubmitted for a long time, since a preprint
+can acquire a proper venue.
 
 **Decide about the single-annotator gap.** Section 7 states plainly that every
 label came from one person who works on one of the evaluated systems, and that
