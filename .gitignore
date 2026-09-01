@@ -21,3 +21,7 @@ results_jailbreak_312.json
 # Generated from the results; rebuild with make_report.py
 report.html
 benchmark_public.json
+
+# Not redistributed: the upstream dataset card states no licence. Rebuild it with
+# build_ai4privacy.py and verify against corpus/ai4privacy.manifest.json.
+corpus/ai4privacy.jsonl

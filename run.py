@@ -21,6 +21,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -140,6 +141,11 @@ def main() -> int:
             print(f"{name.ljust(w2)}  {r['recall']*100:6.1f}% "
                   f"{r['false_alarm_rate']*100:11.1f}% {r['f1']*100:6.1f}%")
         if args.json:
+            # Keep the earliest date across the merged files: the combined table
+            # is only as fresh as its stalest contestant.
+            stamps = [d for d in (json.loads(Path(f).read_text(encoding="utf-8"))
+                                  .get("generated") for f in args.merge) if d]
+            merged["generated"] = min(stamps) if stamps else date.today().isoformat()
             Path(args.json).write_text(json.dumps(merged, indent=2), encoding="utf-8")
             print(f"\nwrote {args.json}")
         return 0
@@ -238,6 +244,10 @@ def main() -> int:
             print(f"  {name.ljust(24)} {why}")
 
     if args.json:
+        # Stamp the measurement date into the results so the report cannot label
+        # them with the day it happened to be regenerated. A guardrail score is
+        # only meaningful against the date it was measured.
+        results["generated"] = date.today().isoformat()
         Path(args.json).write_text(json.dumps(results, indent=2), encoding="utf-8")
         print(f"\nwrote {args.json}")
     return 0

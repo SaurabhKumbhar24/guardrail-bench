@@ -9,11 +9,33 @@ hand except the prose.
     chrome --headless --print-to-pdf=Fluiq-Guardrail-Benchmark.pdf report.html
 """
 import json
-from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-RUN_DATE = date.today().isoformat()
+
+# The date on the report is when the guardrails were MEASURED, never when the
+# report was regenerated. Those drifted apart the first time the report was
+# rebuilt without re-running anything, which relabelled an August 7 measurement
+# with the day the Markdown happened to be written. Guardrails change under you,
+# so a benchmark carrying the wrong date is worse than one carrying none.
+#
+# run.py stamps `generated` into its results JSON, so the date now travels with
+# the measurements. This constant is the fallback for result files written
+# before that existed.
+MEASURED_FALLBACK = "2026-08-07"
+
+
+def run_date() -> str:
+    for name in ("results.json", "results_injection.json", "results_jailbreak.json"):
+        p = ROOT / name
+        if p.exists():
+            stamped = json.loads(p.read_text(encoding="utf-8")).get("generated")
+            if stamped:
+                return stamped
+    return MEASURED_FALLBACK
+
+
+RUN_DATE = run_date()
 
 # ── Corpora, in report order ──────────────────────────────────────────────────
 
@@ -127,6 +149,13 @@ def load_results(name):
 def corpus_counts(name):
     p = ROOT / "corpus" / name
     if not p.exists():
+        # A corpus we have no licence to redistribute is absent from a fresh
+        # clone (see corpus/SOURCES.md). Fall back to its manifest so the report
+        # states the real case count instead of silently claiming zero.
+        m = p.with_suffix(".manifest.json")
+        if m.exists():
+            rows = json.loads(m.read_text(encoding="utf-8"))["rows"]
+            return len(rows), sum(1 for r in rows if r["expect"] == "block")
         return 0, 0
     rows = [json.loads(l) for l in p.read_text(encoding="utf-8").split(chr(10)) if l.strip()]
     b = sum(1 for r in rows if r["expect"] == "block")
