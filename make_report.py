@@ -11,6 +11,8 @@ hand except the prose.
 import json
 from pathlib import Path
 
+import stats
+
 ROOT = Path(__file__).resolve().parent
 
 # The date on the report is when the guardrails were MEASURED, never when the
@@ -166,18 +168,23 @@ def corpus_counts(name):
     return len(rows), b
 
 
-def rows_for(res, secondary=False):
+def rows_for(res, secondary=False, expect=None):
     """Scored rows, best F1 first.
 
     `secondary` selects the extra Fluiq configurations instead of the comparison
     set, so the two callers cannot accidentally overlap or drop a row between
     them.
+
+    `expect` (case ID to verdict) adds Wilson confidence intervals. A ranked
+    table invites the reader to believe the order means something, and on the
+    49-case corpus the gap between first and second is three cases. The interval
+    is what stops the ranking from overclaiming.
     """
     out = []
     for name, r in sorted(res["guardrails"].items(), key=lambda kv: -kv[1]["f1"]):
         if (name in SECONDARY) != secondary:
             continue
-        out.append({
+        row = {
             "name": DISPLAY.get(name, name),
             "adapter": name,
             "slug": SLUG.get(name, "regex-baseline"),
@@ -187,8 +194,31 @@ def rows_for(res, secondary=False):
             "f1": r["f1"] * 100,
             "version": r.get("version", "?"),
             "errors": r.get("errors", 0),
-        })
+        }
+        if expect:
+            iv = stats.intervals(r, expect)
+            row["recall_ci"] = iv["recall_ci"]
+            row["fa_ci"] = iv["fa_ci"]
+        out.append(row)
     return out
+
+
+def significance(res, expect):
+    """Ranked contestants, their pairwise McNemar results, and the summary line."""
+    g = {k: v for k, v in res["guardrails"].items() if k not in SECONDARY}
+    order = [k for k, _ in sorted(g.items(), key=lambda kv: -kv[1]["f1"])]
+    pairs = stats.pairwise(g, expect, order)
+    same = stats.indistinguishable(pairs)
+    return {
+        "pairs": pairs,
+        "same": same,
+        "total": len(pairs),
+        "separable": len(pairs) - len(same),
+    }
+
+
+def ci_text(lo_hi) -> str:
+    return f"[{lo_hi[0]:.1f}, {lo_hi[1]:.1f}]"
 
 
 # ── Markdown ──────────────────────────────────────────────────────────────────
@@ -205,6 +235,16 @@ def markdown() -> str:
     w("Eight guardrails, measured on four corpora. Six are independent products, one is a "
       "thirty-line regex control, and one is ours. Two of the corpora are public datasets "
       "that neither we nor any vendor curated.\n")
+    w("**Most of the ordering below is not statistically significant, including the part "
+      "that flatters us.** Every guardrail sees the identical case list, so the outcomes are "
+      "paired and McNemar's exact test applies. On the 49-case adversarial suite it separates "
+      "only 11 of 28 pairs: the top four finishers are mutually indistinguishable, and the "
+      "leader is not distinguishable from the thirty-line regex control (p = 0.065). On the "
+      "jailbreak corpus, Lakera's 97.3% recall is not distinguishable from that same control "
+      "(p = 0.25), because an 83.3% false-alarm rate cancels the advantage. Every table now "
+      "carries Wilson intervals and the pairs the data cannot separate, because a ranked list "
+      "with no interval invites a reader to believe an order the sample size does not "
+      "support.\n")
 
     for c in CORPORA:
         res = load_results(c["results"])
@@ -215,10 +255,27 @@ def markdown() -> str:
         w(f"{c['blurb']}\n")
         w(f"**Corpus** — {n} cases ({nb} should block, {n - nb} should pass). "
           f"**Source** — {c['source']}. **Licence** — {c['licence']}.\n")
-        w("| Guardrail | Category | Recall | False alarm | F1 |")
-        w("|---|---|---:|---:|---:|")
-        for r in rows_for(res):
-            w(f"| `{r['name']}` | {r['family']} | {r['recall']:.1f}% | {r['fa']:.1f}% | **{r['f1']:.1f}%** |")
+        expect = stats.load_expect(c["corpus"])
+        w("| Guardrail | Category | Recall | 95% CI | False alarm | 95% CI | F1 |")
+        w("|---|---|---:|---:|---:|---:|---:|")
+        for r in rows_for(res, expect=expect):
+            rci = ci_text(r["recall_ci"]) if expect else ""
+            fci = ci_text(r["fa_ci"]) if expect else ""
+            w(f"| `{r['name']}` | {r['family']} | {r['recall']:.1f}% | {rci} | "
+              f"{r['fa']:.1f}% | {fci} | **{r['f1']:.1f}%** |")
+
+        if expect:
+            s = significance(res, expect)
+            w(f"\n**How much of this order is real?** McNemar's exact test on the paired "
+              f"per-case outcomes separates {s['separable']} of {s['total']} pairs at "
+              f"p < 0.05.")
+            if s["same"]:
+                w("\nThe data cannot separate these pairs:\n")
+                w("| Pair | Discordant | p |")
+                w("|---|---:|---:|")
+                for p in s["same"]:
+                    a, b = DISPLAY.get(p["a"], p["a"]), DISPLAY.get(p["b"], p["b"])
+                    w(f"| `{a}` vs `{b}` | {p['b_count']}/{p['c_count']} | {p['p']:.3f} |")
 
     w("\n## Other Fluiq configurations\n")
     w("The tables above give every contestant one row, ours included. We measured more than "
@@ -280,6 +337,14 @@ code { font-family:'Cascadia Mono',Consolas,monospace; font-size:9pt;
 .meta { font-size:9pt; color:var(--mute); margin:2px 0 10px; }
 .meta b { color:var(--ink); font-weight:600; }
 .win { font-weight:700; }
+/* Intervals sit beside the point estimate as supporting detail, not as a
+   second number competing with it. Same tabular figures so the brackets line
+   up down the column. */
+td.ci, th.ci { color:var(--mute); font-size:8.5pt; white-space:nowrap; }
+.sig { font-size:9pt; color:var(--mute); margin:2px 0 16px; line-height:1.5;
+       page-break-inside:avoid; }
+.sig b { color:var(--ink); font-weight:600; }
+.sig code { font-size:8.5pt; }
 .note { border-left:3px solid var(--accent); background:#f6f9fe; padding:11px 14px;
         margin:14px 0; font-size:9.5pt; page-break-inside:avoid; }
 .warn { border-left:3px solid var(--bad); background:#fdf6f6; padding:11px 14px;
@@ -390,6 +455,16 @@ def html() -> str:
       "This one asks a different question: given something a model is about to say, or "
       "something a user just sent, <strong>would your guardrail stop it?</strong></p>")
 
+    w("<div class='note'><b>Most of the ordering below is not statistically significant, "
+      "including the part that flatters us.</b> Every guardrail sees the identical case list, "
+      "so the outcomes are paired and McNemar's exact test applies. On the 49-case adversarial "
+      "suite it separates only 11 of 28 pairs: the top four finishers are mutually "
+      "indistinguishable, and the leader is not distinguishable from the thirty-line regex "
+      "control (p&nbsp;=&nbsp;0.065). On the jailbreak corpus, Lakera's 97.3% recall is not "
+      "distinguishable from that same control (p&nbsp;=&nbsp;0.25), because an 83.3% "
+      "false-alarm rate cancels the advantage. Every table carries Wilson intervals and the "
+      "pairs the data cannot separate.</div>")
+
     w("<div class='warn'><b>Disclosure.</b> This benchmark is published by Fluiq, and Fluiq is "
       "one of the contestants. No methodology removes that conflict. What we do instead: the "
       f"corpora, harness and every adapter are public at <a href='{REPO}'>"
@@ -409,16 +484,36 @@ def html() -> str:
         src = (f"<a href='{c['source_url']}'>{c['source']}</a>" if c["source_url"] else c["source"])
         w(f"<p class='meta'><b>Corpus</b> {n} cases &middot; {nb} block / {n-nb} allow &nbsp;|&nbsp; "
           f"<b>Source</b> {src} &nbsp;|&nbsp; <b>Licence</b> {c['licence']}</p>")
-        rows = rows_for(res)
+        expect = stats.load_expect(c["corpus"])
+        rows = rows_for(res, expect=expect)
         w(charts(rows))
         w("<table><thead><tr><th>Guardrail</th><th>Category</th>"
-          "<th class='n'>Recall</th><th class='n'>False alarm</th><th class='n'>F1</th></tr></thead><tbody>")
+          "<th class='n'>Recall</th><th class='n ci'>95% CI</th>"
+          "<th class='n'>False alarm</th><th class='n ci'>95% CI</th>"
+          "<th class='n'>F1</th></tr></thead><tbody>")
         for i, r in enumerate(rows):
             cls = " class='win'" if i == 0 else ""
+            rci = ci_text(r["recall_ci"]) if expect else "&mdash;"
+            fci = ci_text(r["fa_ci"]) if expect else "&mdash;"
             w(f"<tr><td><code>{r['name']}</code></td><td><span class='tag'>{r['family']}</span></td>"
-              f"<td class='n'>{r['recall']:.1f}%</td><td class='n'>{r['fa']:.1f}%</td>"
+              f"<td class='n'>{r['recall']:.1f}%</td><td class='n ci'>{rci}</td>"
+              f"<td class='n'>{r['fa']:.1f}%</td><td class='n ci'>{fci}</td>"
               f"<td class='n'{cls}>{r['f1']:.1f}%</td></tr>")
         w("</tbody></table>")
+
+        if expect:
+            s = significance(res, expect)
+            w(f"<p class='sig'><b>How much of this order is real?</b> Every guardrail sees the "
+              f"identical case list, so the outcomes are paired and McNemar's exact test applies. "
+              f"It separates <b>{s['separable']} of {s['total']}</b> pairs at p &lt; 0.05.")
+            if s["same"]:
+                items = ", ".join(
+                    f"<code>{DISPLAY.get(p['a'], p['a'])}</code> vs "
+                    f"<code>{DISPLAY.get(p['b'], p['b'])}</code> (p={p['p']:.2f})"
+                    for p in s["same"]
+                )
+                w(f" The data cannot separate: {items}.")
+            w("</p>")
 
     w("<h2>Other Fluiq configurations</h2>")
     w("<p>The tables above give every contestant one row, ours included. We measured more than "

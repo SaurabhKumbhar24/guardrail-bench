@@ -24,7 +24,25 @@ between products.
 | Prompt injection | `lakera-guard` 89.6 F1 | `llm-guard` 54.5 | 3rd of 4 |
 | Jailbreak | `llm-guard` 81.1 F1 | `lakera-guard` 69.4 | 3rd of 4 |
 
-Two results worth more than the ranking:
+**Most of that ordering is not statistically significant, including the part that
+flatters us.** Every guardrail sees the identical case list, so the outcomes are
+paired and McNemar's exact test applies. On the 49-case adversarial suite it
+separates only 11 of 28 pairs. The top four finishers are mutually
+indistinguishable, and the leader is not distinguishable from the thirty-line
+regex control (p = 0.065). On the jailbreak corpus, Lakera's 97.3% recall is not
+distinguishable from that same control (p = 0.25), because an 83.3% false-alarm
+rate cancels the advantage out.
+
+```bash
+python stats.py    # Wilson intervals and every pairwise McNemar result
+```
+
+We publish the ranking because a comparison has to say something, and we publish
+the arithmetic that undercuts it because a ranked list with no interval invites
+you to believe an order the sample size does not support. If you take one thing
+from this repository, take the p-values rather than the leaderboard.
+
+Two more results worth more than the ranking:
 
 **A high recall number on its own means nothing.** Lakera catches 97.3% of
 jailbreaks, the best score in the table, while flagging 83.3% of the benign half
@@ -69,6 +87,7 @@ python verify_corpus.py        # confirms your rebuild matches ours
 python run.py                  # every contestant that imports
 python run.py --only presidio  # just one
 python run.py --json results.json
+python stats.py                # confidence intervals and pairwise significance
 python make_report.py          # regenerates REPORT.md and report.html
 ```
 
@@ -190,7 +209,17 @@ roleplay and persona prompts as benign, which is the single biggest source of
 disagreement in these results. Reasonable people would score all of these
 differently; the labels are visible so you can.
 
-**949 cases is small**, mostly English, and skewed toward PII and secrets.
+**949 cases is small**, mostly English, and skewed toward PII and secrets. The
+adversarial suite in particular is 49 cases, which is why most of its pairwise
+comparisons come back indistinguishable. Rather than hide that behind a ranked
+table, `stats.py` reports it and the report prints it under every corpus.
+
+**One annotator.** Every label was assigned by one person, who also works on one
+of the contestants. There is no second labeller and therefore no inter-annotator
+agreement figure, which is the single largest methodological gap here. The notes
+on each case exist so you can disagree case by case, but that is a weaker
+guarantee than two independent labellers and a kappa, and it should be read as
+such.
 
 ## Disagree with this
 
