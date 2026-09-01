@@ -24,7 +24,12 @@ def digest(text: str) -> str:
 
 def load_jsonl(path: Path) -> dict[str, dict]:
     rows = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    # split("\n"), never splitlines(). splitlines() also breaks on U+2028,
+    # U+2029, U+0085 and the C0 separators, and jailbreak.jsonl really does
+    # carry two U+2028 inside JSON string values. splitlines() cuts those rows
+    # in half and the JSON then fails to parse. Attack corpora are full of
+    # exactly this kind of character, which is rather the point of them.
+    for line in path.read_text(encoding="utf-8").split("\n"):
         line = line.strip()
         if line:
             row = json.loads(line)
