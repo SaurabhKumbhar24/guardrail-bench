@@ -24,6 +24,10 @@ ROOT = Path(__file__).resolve().parent
 # before that existed.
 MEASURED_FALLBACK = "2026-08-07"
 
+# The report tells the reader the harness, corpora and adapters are published and
+# invites a rebuttal pull request. It has to say where, or that is just a claim.
+REPO = "https://github.com/SaurabhKumbhar24/guardrail-bench"
+
 
 def run_date() -> str:
     for name in ("results.json", "results_injection.json", "results_jailbreak.json"):
@@ -193,7 +197,7 @@ def markdown() -> str:
     o = []
     w = o.append
     w("# Output Guardrails: A Measured Comparison\n")
-    w(f"*Fluiq · {RUN_DATE}*\n")
+    w(f"*Fluiq · measured {RUN_DATE} · <{REPO}>*\n")
     w("## Summary\n")
     w("Most LLM safety benchmarks ask whether the model misbehaves. This one asks a "
       "different question: **given something a model is about to say, or something a "
@@ -388,7 +392,8 @@ def html() -> str:
 
     w("<div class='warn'><b>Disclosure.</b> This benchmark is published by Fluiq, and Fluiq is "
       "one of the contestants. No methodology removes that conflict. What we do instead: the "
-      "corpora, harness and every adapter are public; scoring was fixed before any contestant "
+      f"corpora, harness and every adapter are public at <a href='{REPO}'>"
+      f"{REPO.replace('https://', '')}</a>; scoring was fixed before any contestant "
       "ran; competitors run at stock settings with nothing tuned to these cases; every miss and "
       "false alarm is listed by case ID in the raw results; and a thirty-line regex control is "
       "included so it is visible whenever a sophisticated product barely beats it. "
@@ -490,14 +495,21 @@ def html() -> str:
     w("</ul>")
 
     w("<h2>Reproducing this</h2>")
-    w("<p>The harness, both hand-written corpora, the public-dataset samplers and all adapters are "
-      "published. Contestants needing credentials are skipped and reported, never scored zero.</p>")
-    w("<p><code>python run.py --corpus &lt;corpus&gt;.jsonl --json results.json</code><br>"
+    w(f"<p>The harness, both hand-written corpora, the public-dataset samplers and all adapters are "
+      f"published under MIT at <a href='{REPO}'>{REPO.replace('https://', '')}</a>. "
+      "Contestants needing credentials are skipped and reported, never scored zero.</p>")
+    w("<p><code>git clone " + REPO + "</code><br>"
+      "<code>python run.py --corpus &lt;corpus&gt;.jsonl --json results.json</code><br>"
       "<code>python make_report.py</code></p>")
+    w("<p>One corpus is not redistributed. The <code>ai4privacy/pii-masking-200k</code> dataset card "
+      "states no licence, so the repository ships the seeded sampler and a SHA-256 manifest of all "
+      "300 rows instead. <code>python verify_corpus.py</code> proves a rebuild is byte-identical to "
+      "the corpus these numbers were computed on.</p>")
     w("<p>Adding a guardrail means implementing one method, <code>scan(text) -&gt; Verdict</code>. "
       "If you think a product is misconfigured here, the fastest rebuttal is a pull request.</p>")
 
     w(f"<div class='foot'>Generated {RUN_DATE} from results JSON by <code>make_report.py</code>. "
+      f"Source and corpora: <a href='{REPO}'>{REPO.replace('https://', '')}</a>. "
       "All credentials, names and identifiers in the hand-written corpus are synthetic.</div>")
     w("</div></body></html>")
     return "\n".join(p)

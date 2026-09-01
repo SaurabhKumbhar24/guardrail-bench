@@ -1,6 +1,6 @@
 # Output Guardrails: A Measured Comparison
 
-*Fluiq · 2026-08-07*
+*Fluiq · measured 2026-08-07 · <https://github.com/SaurabhKumbhar24/guardrail-bench>*
 
 ## Summary
 
