@@ -25,3 +25,10 @@ benchmark_public.json
 # Not redistributed: the upstream dataset card states no licence. Rebuild it with
 # build_ai4privacy.py and verify against corpus/ai4privacy.manifest.json.
 corpus/ai4privacy.jsonl
+
+# LaTeX build artifacts. main.pdf is committed so the paper is readable without
+# a TeX install; the intermediates are not.
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/build*.log
